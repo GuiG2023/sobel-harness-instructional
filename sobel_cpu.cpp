@@ -1,6 +1,6 @@
 //
 // (C) 2021, E. Wes Bethel
-// conv_harness_cpu.cpp: 
+// conv_harness_cpu.cpp:
 // usage:
 //      conv_harness_cpu [no args, all is hard coded]
 //
@@ -14,19 +14,18 @@
 #include <omp.h>
 
 // easy-to-find and change variables for the input.
-// specify the name of a file containing data to be read in as bytes, along with 
+// specify the name of a file containing data to be read in as bytes, along with
 // dimensions [columns, rows]
 
 // this is the original laughing zebra image
-//static char input_fname[] = "../data/zebra-gray-int8";
-//static int data_dims[2] = {3556, 2573}; // width=ncols, height=nrows
-//char output_fname[] = "../data/processed-raw-int8-cpu.dat";
+// static char input_fname[] = "../data/zebra-gray-int8";
+// static int data_dims[2] = {3556, 2573}; // width=ncols, height=nrows
+// char output_fname[] = "../data/processed-raw-int8-cpu.dat";
 
 // this one is a 4x augmentation of the laughing zebra
 static char input_fname[] = "../data/zebra-gray-int8-4x";
 static int data_dims[2] = {7112, 5146}; // width=ncols, height=nrows
 char output_fname[] = "../data/processed-raw-int8-4x-cpu.dat";
-
 
 //
 // sobel_filtered_pixel(): perform the sobel filtering at a given i,j location
@@ -41,17 +40,43 @@ char output_fname[] = "../data/processed-raw-int8-4x-cpu.dat";
 
 // see https://en.wikipedia.org/wiki/Sobel_operator
 //
-float
-sobel_filtered_pixel(float *s, int i, int j , int ncols, int nrows, float *gx, float *gy)
+float sobel_filtered_pixel(float *s, int i, int j, int ncols, int nrows, float *gx, float *gy)
 {
-   float t=0.0;
+   float t = 0.0;
 
-   // ADD CODE HERE: add your code here for computing the sobel stencil computation at location (i,j)
-   // of input s, returning a float
+   // Initialize gradient components
+   float Gx = 0.0; // x-direction)
+   float Gy = 0.0; // y-direction)
+
+   // Iterate over the 3x3 neighborhood centered at (i, j)
+   int index = 0;
+
+   for (int di = -1; di <= 1; di++)
+   {
+      for (int dj = -1; dj <= 1; dj++)
+      {
+         // Compute neighbor pixel coordinates
+         int ni = i + di; // Neighbor row index
+         int nj = j + dj; // Neighbor column index
+
+         // Check for boundary conditions
+         if (ni >= 0 && ni < nrows && nj >= 0 && nj < ncols)
+         {
+            // Compute 1D array index from 2D coordinates
+            // For a 2D array stored in row-major order: index = row * ncols + col
+            int pixel_index = ni * ncols + nj;
+
+            // Accumulate convolution results
+            Gx += s[pixel_index] * gx[index]; // Horizontal
+            Gy += s[pixel_index] * gy[index]; // Vertical
+         }
+         index++;
+      }
+   }
+   t = sqrt(Gx * Gx + Gy * Gy);
 
    return t;
 }
-
 
 //
 //  do_sobel_filtering() will iterate over all input image pixels and invoke the
@@ -65,8 +90,7 @@ sobel_filtered_pixel(float *s, int i, int j , int ncols, int nrows, float *gx, f
 // output: float *d - the buffer for the output, size=rows*cols.
 //
 
-void
-do_sobel_filtering(float *in, float *out, int ncols, int nrows)
+void do_sobel_filtering(float *in, float *out, int ncols, int nrows)
 {
    float Gx[] = {1.0, 0.0, -1.0, 2.0, 0.0, -2.0, 1.0, 0.0, -1.0};
    float Gy[] = {1.0, 2.0, 1.0, 0.0, 0.0, 0.0, -1.0, -2.0, -1.0};
@@ -74,28 +98,36 @@ do_sobel_filtering(float *in, float *out, int ncols, int nrows)
    // ADD CODE HERE: insert your code here that iterates over every (i,j) of input,  makes a call
    // to sobel_filtered_pixel, and assigns the resulting value at location (i,j) in the output.
 
+#pragma omp parallel for collapse(2)
+   for (int i = 0; i < nrows; i++)
+   { // Iterate over all rows
+      for (int j = 0; j < ncols; j++)
+      { // Iterate over all columns
+         // Apply Sobel filter at pixel (i,j)
+         // Returns gradient magnitude, which is stored in output array
+         out[i * ncols + j] = sobel_filtered_pixel(in, i, j, ncols, nrows, Gx, Gy);
+      }
+   }
 }
 
-
-int
-main (int ac, char *av[])
+int main(int ac, char *av[])
 {
    // filenames, etc, hard coded at the top of the file
    // load input data
-//    char input_fname[]="../data/zebra-gray-raw-int8.dat";
-//   int data_dims[2] = {3556, 2573};
-//   char output_fname[] = "../data/processed-raw-int8-cpu.dat";
+   //    char input_fname[]="../data/zebra-gray-raw-int8.dat";
+   //   int data_dims[2] = {3556, 2573};
+   //   char output_fname[] = "../data/processed-raw-int8-cpu.dat";
 
-   off_t nvalues = data_dims[0]*data_dims[1];
-   unsigned char *in_data_bytes = (unsigned char *)malloc(sizeof(unsigned char)*nvalues);
+   off_t nvalues = data_dims[0] * data_dims[1];
+   unsigned char *in_data_bytes = (unsigned char *)malloc(sizeof(unsigned char) * nvalues);
 
-   FILE *f = fopen(input_fname,"r");
+   FILE *f = fopen(input_fname, "r");
    if (f == NULL)
    {
       printf(" Error opening the input file: %s \n", input_fname);
       return 1;
    }
-   if (fread((void *)in_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues*sizeof(unsigned char))
+   if (fread((void *)in_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues * sizeof(unsigned char))
    {
       printf("Error reading input file. \n");
       fclose(f);
@@ -108,12 +140,12 @@ main (int ac, char *av[])
 #define ONE_OVER_255 0.003921568627451
 
    // now convert from byte, in range 0..255, to float, in range 0..1
-   float *in_data_floats = (float *)malloc(sizeof(float)*nvalues);
-   for (off_t i=0; i<nvalues; i++)
+   float *in_data_floats = (float *)malloc(sizeof(float) * nvalues);
+   for (off_t i = 0; i < nvalues; i++)
       in_data_floats[i] = (float)in_data_bytes[i] * ONE_OVER_255;
 
    // now, create a buffer for output
-   float *out_data_floats = (float *)malloc(sizeof(float)*nvalues);
+   float *out_data_floats = (float *)malloc(sizeof(float) * nvalues);
 
    // do the processing =======================
    std::chrono::time_point<std::chrono::high_resolution_clock> start_time = std::chrono::high_resolution_clock::now();
@@ -126,13 +158,13 @@ main (int ac, char *av[])
    std::cout << " Elapsed time is : " << elapsed.count() << " " << std::endl;
 
    // write output after converting from floats in range 0..1 to bytes in range 0..255
-   unsigned char *out_data_bytes = in_data_bytes;  // just reuse the buffer from before
-   for (off_t i=0; i<nvalues; i++)
+   unsigned char *out_data_bytes = in_data_bytes; // just reuse the buffer from before
+   for (off_t i = 0; i < nvalues; i++)
       out_data_bytes[i] = (unsigned char)(out_data_floats[i] * 255.0);
 
-   f = fopen(output_fname,"w");
+   f = fopen(output_fname, "w");
 
-   if (fwrite((void *)out_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues*sizeof(unsigned char))
+   if (fwrite((void *)out_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues * sizeof(unsigned char))
    {
       printf("Error writing output file. \n");
       fclose(f);
