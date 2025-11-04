@@ -47,34 +47,33 @@ float sobel_filtered_pixel(float *s, int i, int j, int ncols, int nrows, float *
 
    float t = 0.0;
 
-   // ADD CODE HERE: add your code here for computing the sobel stencil computation at location (i,j)
-   // of input s, returning a float
+   float Gx = 0.0, Gy = 0.0;
 
-   // same as in sobel_cpu.cpp
-
-   // Initialize gradient components
-   float Gx = 0.0;
-   float Gy = 0.0;
-
-   int index = 0;
-   for (int di = -1; di <= 1; di++)
+   // 3x3
+   for (int dy = -1; dy <= 1; dy++)
    {
-      for (int dj = -1; dj <= 1; dj++)
+      for (int dx = -1; dx <= 1; dx++)
       {
-         int ni = i + di;
-         int nj = j + dj;
+         int row = i + dy;
+         int col = j + dx;
 
-         // Check for boundary conditions
-         if (ni >= 0 && ni < nrows && nj >= 0 && nj < ncols)
+         // check bounds
+         if (row >= 0 && row < nrows && col >= 0 && col < ncols)
          {
-            Gx += s[ni * ncols + nj] * gx[index];
-            Gy += s[ni * ncols + nj] * gy[index];
+            int img_idx = row * ncols + col;
+            int filter_idx = (dy + 1) * 3 + (dx + 1);
+
+            Gx += s[img_idx] * gx[filter_idx];
+            Gy += s[img_idx] * gy[filter_idx];
          }
-         index++;
       }
    }
 
-   t = sqrt(Gx * Gx + Gy * Gy);
+   float t = sqrtf(Gx * Gx + Gy * Gy);
+   return t;
+
+   // ADD CODE HERE: add your code here for computing the sobel stencil computation at location (i,j)
+   // of input s, returning a float
 
    return t;
 }
@@ -102,30 +101,33 @@ void do_sobel_filtering(float *in, float *out, int ncols, int nrows)
    height = nrows;
    nvals = width * height;
 
-   // define the data mapping from the host to the device
-   // some of the data we only need to send: in, Gx, Gy, width, height
-   // some of the data we only need to retrieve: out
+// define the data mapping from the host to the device
+// some of the data we only need to send: in, Gx, Gy, width, height
+// some of the data we only need to retrieve: out
 
-   // ADD CODE HERE: you will need to add one more item to this line to map the "out" data array such that
-   // it is returned from the the device after the computation is complete. everything else here is input.
-#pragma omp target teams distribute parallel for collapse(2) \
-    map(to : in[0 : nvals]) map(to : width) map(to : height) \
-    map(to : Gx[0 : 9]) map(to : Gy[0 : 9])                  \
-    map(from : out[0 : nvals])
-
-   for (int i = 0; i < height; i++)
+// ADD CODE HERE: you will need to add one more item to this line to map the "out" data array such that
+// it is returned from the the device after the computation is complete. everything else here is input.
+#pragma omp target data map(to : in[0 : nvals]) map(to : width) map(to : height) map(to : Gx[0 : 9]) map(to : Gy[0 : 9]) map(from : out[0 : nvals])
    {
-      for (int j = 0; j < width; j++)
+
+      // ADD CODE HERE: insert your code here that iterates over every (i,j) of input,  makes a call
+      // to sobel_filtered_pixel, and assigns the resulting value at location (i,j) in the output.
+
+      // don't forget to include a  #pragma omp target teams parallel for around those loop(s).
+      // You may also wish to consider additional clauses that might be appropriate here to increase parallelism
+      // if you are using nested loops.
+
+#pragma omp target teams distribute parallel for collapse(2)
+      for (int i = 0; i < height; i++)
       {
-         out[i * width + j] = sobel_filtered_pixel(in, i, j, width, height, Gx, Gy);
+         for (int j = 0; j < width; j++)
+         {
+            out[i * width + j] = sobel_filtered_pixel(in, i, j, width, height, Gx, Gy);
+         }
       }
-   }
 
-   // don't forget to include a  #pragma omp target teams parallel for around those loop(s).
-   // You may also wish to consider additional clauses that might be appropriate here to increase parallelism
-   // if you are using nested loops.
-
-} // pragma omp target data
+   } // pragma omp target data
+}
 
 int main(int ac, char *av[])
 {
