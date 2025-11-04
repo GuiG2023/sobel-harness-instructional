@@ -1,152 +1,160 @@
-CSC 746 F25 CP5 - Sobel Filter Implementations
+# CSC 746 F25 – Coding Project #5  
+## GPU Stencil Operations with CUDA and OpenMP Offload  
+### Sobel Filter Implementations
 
-This submission is for Coding Project #5. It includes three implementations of a Sobel edge detection filter:
+---
 
-sobel_cpu: CPU-only C++ with OpenMP parallelism.
+### Overview
 
-sobel_gpu: GPU implementation using CUDA.
+This project implements a **Sobel edge detection filter** in three different parallel computing paradigms:
 
-sobel_cpu_omp_offload: GPU implementation using C++ with OpenMP Device Offload.
+1. **sobel_cpu** – CPU-only implementation using OpenMP parallelism  
+2. **sobel_gpu** – GPU implementation using CUDA  
+3. **sobel_cpu_omp_offload** – GPU implementation using OpenMP device offload  
 
-All implementations read from the hard-coded data file data/zebra-gray-int8-4x.dat (7112x5146) and write their output to separate files in the data/ directory.
+All programs process the same input dataset:
+data/zebra-gray-int8-4x.dat  (7112 × 5146 pixels)
+and generate their respective output files in the `data/` directory.
 
-Build Instructions
+---
 
-These instructions must be run on Perlmutter.
+### 📁 Directory Structure
+sobel-harness-instructional/
+├── CMakeLists.txt
+├── src/
+│   ├── sobel_cpu.cpp
+│   ├── sobel_gpu.cu
+│   ├── sobel_cpu_omp_offload.cpp
+├── data/
+│   ├── zebra-gray-int8-4x.dat
+│   ├── processed-raw-int8-4x-cpu.dat
+│   ├── processed-raw-int8-4x-gpu.dat
+│   └── processed-raw-int8-4x-offload.dat
+├── scripts/
+│   ├── heatmap_plot_hw5.py
+│   
+└── README.md
+---
 
-Set up the required environment:
+###  Build Instructions (Perlmutter Environment)
 
+Run these commands **on Perlmutter** before building:
+
+```bash
 module load PrgEnv-nvidia
 export CC=cc
 export CXX=CC
 
-
-From the project's root directory, create a build directory and use CMake/make:
-
+Then build the project:
 mkdir build
 cd build
-cmake ../ -Wno-dev
+cmake ../ 
 make
 
-
-This will create three executables in the build/ directory: sobel_cpu, sobel_gpu, and sobel_cpu_omp_offload.
+This will produce three executables in the build/ directory:
+	•	sobel_cpu
+	•	sobel_gpu
+	•	sobel_cpu_omp_offload
 
 Execution Instructions
 
-All execution should be done on a Perlmutter GPU node (e.g., via an interactive salloc session or a batch script).
-
-1. Part 1: CPU (OpenMP Parallel)
-
-This program (sobel_cpu) uses the OMP_NUM_THREADS environment variable to control concurrency, as required by the assignment.
-
-To run with N threads:
-
-# Example for 8 threads
+Part 1: CPU (OpenMP Parallel)
+Executable: sobel_cpu
+Input control: OMP_NUM_THREADS environment variable.
+Example run:
 export OMP_NUM_THREADS=8
 ./build/sobel_cpu
+Performance Study:
+Run with OMP_NUM_THREADS = 1, 2, 4, 8, 16
 
+Output:
+data/processed-raw-int8-4x-cpu.dat
 
-The performance test requires running with OMP_NUM_THREADS set to 1, 2, 4, 8, and 16. The output file is data/processed-raw-int8-4x-cpu.dat.
-
-2. Part 2: GPU (CUDA)
-
-This program (sobel_gpu) takes the number of thread blocks and threads per block as command-line arguments.
-
+Part 2: GPU (CUDA)
+Executable: sobel_gpu
 Usage:
 ./build/sobel_gpu <numBlocks> <numThreadsPerBlock>
+Example:
+./build/sobel_gpu 64 256
+Performance Study:
+Test combinations:
+	•	Threads per block = [32, 64, 128, 256, 512, 1024]
+	•	Number of blocks = [1, 4, 16, 64, 256, 1024, 4096]
 
-Example (for 64 blocks and 256 threads):
+Output:
+data/processed-raw-int8-4x-gpu.dat
 
+⸻
+
+ Part 3: GPU (OpenMP Device Offload)
+Executable: sobel_cpu_omp_offload
+
+Example run:
+./build/sobel_cpu_omp_offload
+Output:
+data/processed-raw-int8-4x-offload.dat
+
+Performance Measurement (Using NVIDIA Nsight Compute)
+
+Metric Name
+Meaning
+gpu__time_duration.avg
+GPU kernel runtime (ms)
+sm__warps_active.avg.pct_of_peak_sustained_active
+Achieved Occupancy (%)
+dram__throughput.avg.pct_of_peak_sustained_elapsed
+% of peak sustained memory bandwidth
+
+Example Command (CUDA):
+ncu --set basic \
+--metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active \
 ./build/sobel_gpu 64 256
 
-
-The output file is data/processed-raw-int8-4x-gpu.dat.
-
-3. Part 3: GPU (OpenMP Offload)
-
-This program (sobel_cpu_omp_offload) does not require any special runtime arguments.
-
-To run:
-
+Example Command (OpenMP Offload):
+ncu --set basic \
+--metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active \
 ./build/sobel_cpu_omp_offload
 
+⚠️ If you see
+Profiling failed because a driver resource was unavailable,
+run:
+dcgmi profile --pause
+then re-run the ncu command.
 
-The output file is data/processed-raw-int8-4x-cpu.dat.
+Verification of Image Output
+Verify output visually using the provided Python script:
+module load python
 
-Performance Data Collection (NCU)
-
-The following commands are used to gather the GPU performance metrics as specified in the assignment.
-
-Note: If ncu fails with a "driver resource was unavailable" error, run dcgmi profile --pause and try the ncu command again.
-
-1. GPU (CUDA)
-
-This command collects all three required metrics (runtime, bandwidth, and occupancy) in one run.
-
-# Example for 64 blocks, 256 threads
-ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_gpu 64 256
-
-
-(Note: sm__warps_active.avg.pct_of_peak_sustained_active corresponds to the required "Achieved Occupancy %".)
-
-2. GPU (OpenMP Offload)
-
-This command collects the metrics for the single-run OpenMP offload version.
-
-ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_cpu_omp_offload
-
-
-Testing and Verifying Computations
-
-You can verify the output images using the provided Python script.
-
-Prerequisites:
-
-Log in to Perlmutter with X-tunneling enabled: ssh -Y user@perlmutter.nersc.gov
-
-Load the Python module: module load python
-
-Example (from the project's root directory):
-
-# Display the source image
+# Input image
 python scripts/imshow.py data/zebra-gray-int8-4x.dat 7112 5146
 
-# Display the result from the CUDA code
+# CPU result
+python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
+
+# CUDA result
 python scripts/imshow.py data/processed-raw-int8-4x-gpu.dat 7112 5146
 
-# Display the result from the CPU OpenMP code
-python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
+# OpenMP offload result
+python scripts/imshow.py data/processed-raw-int8-4x-offload.dat 7112 5146
 
-# Display the result from the OpenMP Offload code
-python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
-
-
-README: GPU Node Usage Policy
-WARNING: GPU node allocations are extremely limited and expensive. Follow these rules to avoid wasting resources.
-
-Rule 1: Compiling / Viewing -> Use CPU Nodes
-All non-compute tasks (like make, python imshow.py, editing files, etc.) must be done on a CPU node.
-
-
-# Request a CPU node (for make, python, etc.)
+GPU Node Usage Policy (NERSC Perlmutter)
+Rule 1: Compile & Plot on CPU Nodes
 salloc -N 1 -C cpu -t 10:00 -q interactive -A m3930
-...
-# !! When finished !!
+# (run cmake, make, python scripts)
 exit
-Rule 2: Running Code -> Use GPU Nodes
-Only request a GPU node when you are actively running your CUDA (./sobel_gpu) or OpenMP Offload (./sobel_cpu_omp_offload) programs.
-
-
-# Request a GPU node (for ./sobel_... )
+Rule 2: Run GPU Workloads on GPU Nodes
 salloc -N 1 -C gpu -G 1 -t 10:00 -q interactive -A m3930
-...
-# !! When finished !!
+./build/sobel_gpu 64 256
 exit
-Rule 3: No "Zombie" Jobs
-salloc sessions do not automatically stop if you disconnect or close your terminal. They will keep running and charging your allocation until the time limit is reached.
+Rule 3: Avoid Zombie Jobs
+	•	Always exit interactive shells manually with exit
+	•	Check running jobs:
+    squeue -u $USER
+    Kill stray jobs:
+    scancel <JOBID>
 
-Always exit: You must manually type exit in the salloc shell when you are done.
-
-Check: Run squeue -u $USER on the login node to check for leftover jobs in the R (Running) state.
-
-Clean Up: If you find any "zombie" jobs, kill them immediately with scancel [JOBID].
+Author: Guiran Liu
+Course: CSC 746 – High Performance Computing (Fall 2025)
+Instructor: Prof. Bethel
+Due Date: November 3, 2025, 23:59 PST
+System Tested: NERSC Perlmutter (A100 GPU node)
