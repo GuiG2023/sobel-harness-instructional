@@ -14,19 +14,18 @@
 #include <omp.h>
 
 // easy-to-find and change variables for the input.
-// specify the name of a file containing data to be read in as bytes, along with 
+// specify the name of a file containing data to be read in as bytes, along with
 // dimensions [columns, rows]
 
 // this is the original laughing zebra image
-//static char input_fname[] = "../data/zebra-gray-int8";
-//static int data_dims[2] = {3556, 2573}; // width=ncols, height=nrows
-//char output_fname[] = "../data/processed-raw-int8-cpu.dat";
+// static char input_fname[] = "../data/zebra-gray-int8";
+// static int data_dims[2] = {3556, 2573}; // width=ncols, height=nrows
+// char output_fname[] = "../data/processed-raw-int8-cpu.dat";
 
 // this one is a 4x augmentation of the laughing zebra
 static char input_fname[] = "../data/zebra-gray-int8-4x";
 static int data_dims[2] = {7112, 5146}; // width=ncols, height=nrows
 char output_fname[] = "../data/processed-raw-int8-4x-cpu.dat";
-
 
 // see https://en.wikipedia.org/wiki/Sobel_operator
 
@@ -43,14 +42,39 @@ char output_fname[] = "../data/processed-raw-int8-4x-cpu.dat";
 
 // see https://en.wikipedia.org/wiki/Sobel_operator
 //
-float
-sobel_filtered_pixel(float *s, int i, int j , int ncols, int nrows, float *gx, float *gy)
+float sobel_filtered_pixel(float *s, int i, int j, int ncols, int nrows, float *gx, float *gy)
 {
 
-   float t=0.0;
+   float t = 0.0;
 
    // ADD CODE HERE: add your code here for computing the sobel stencil computation at location (i,j)
    // of input s, returning a float
+
+   // same as in sobel_cpu.cpp
+
+   // Initialize gradient components
+   float Gx = 0.0;
+   float Gy = 0.0;
+
+   int index = 0;
+   for (int di = -1; di <= 1; di++)
+   {
+      for (int dj = -1; dj <= 1; dj++)
+      {
+         int ni = i + di;
+         int nj = j + dj;
+
+         // Check for boundary conditions
+         if (ni >= 0 && ni < nrows && nj >= 0 && nj < ncols)
+         {
+            Gx += s[ni * ncols + nj] * gx[index];
+            Gy += s[ni * ncols + nj] * gy[index];
+         }
+         index++;
+      }
+   }
+
+   t = sqrt(Gx * Gx + Gy * Gy);
 
    return t;
 }
@@ -66,8 +90,7 @@ sobel_filtered_pixel(float *s, int i, int j , int ncols, int nrows, float *gx, f
 // input: float *gx, gy:  arrays of length 9 each, these are logically 3x3 arrays of sobel filter weights
 // output: float *d - the buffer for the output, size=rows*cols.
 //
-void
-do_sobel_filtering(float *in, float *out, int ncols, int nrows)
+void do_sobel_filtering(float *in, float *out, int ncols, int nrows)
 {
    float Gx[] = {1.0, 0.0, -1.0, 2.0, 0.0, -2.0, 1.0, 0.0, -1.0};
    float Gy[] = {1.0, 2.0, 1.0, 0.0, 0.0, 0.0, -1.0, -2.0, -1.0};
@@ -75,49 +98,59 @@ do_sobel_filtering(float *in, float *out, int ncols, int nrows)
    off_t out_indx = 0;
    int width, height, nvals;
 
-   width=ncols;
-   height=nrows;
-   nvals=width*height;
+   width = ncols;
+   height = nrows;
+   nvals = width * height;
 
-// define the data mapping from the host to the device
-// some of the data we only need to send: in, Gx, Gy, width, height
-// some of the data we only need to retrieve: out
+   // define the data mapping from the host to the device
+   // some of the data we only need to send: in, Gx, Gy, width, height
+   // some of the data we only need to retrieve: out
 
-// ADD CODE HERE: you will need to add one more item to this line to map the "out" data array such that 
-// it is returned from the the device after the computation is complete. everything else here is input.
-#pragma omp target data map(to:in[0:nvals]) map(to:width) map(to:height) map(to:Gx[0:9]) map(to:Gy[0:9]) 
+   // ADD CODE HERE: you will need to add one more item to this line to map the "out" data array such that
+   // it is returned from the the device after the computation is complete. everything else here is input.
+#pragma omp target data map(to : in[0 : nvals]) map(to : width) map(to : height) \
+    map(to : Gx[0 : 9]) map(to : Gy[0 : 9])                                      \
+    map(from : out[0 : nvals])
    {
 
-   // ADD CODE HERE: insert your code here that iterates over every (i,j) of input,  makes a call
-   // to sobel_filtered_pixel, and assigns the resulting value at location (i,j) in the output.
-   
+      // ADD CODE HERE: insert your code here that iterates over every (i,j) of input,  makes a call
+      // to sobel_filtered_pixel, and assigns the resulting value at location (i,j) in the output.
+
+#pragma omp target teams distribute parallel for collapse(2)
+      for (int i = 0; i < height; i++)
+      {
+         for (int j = 0; j < width; j++)
+         {
+            int idx = i * width + j;
+            out[idx] = sobel_filtered_pixel(in, i, j, width, height, Gx, Gy);
+         }
+      }
+   }
+
    // don't forget to include a  #pragma omp target teams parallel for around those loop(s).
-   // You may also wish to consider additional clauses that might be appropriate here to increase parallelism 
+   // You may also wish to consider additional clauses that might be appropriate here to increase parallelism
    // if you are using nested loops.
 
-   } // pragma omp target data
-}
+} // pragma omp target data
 
-
-int
-main (int ac, char *av[])
+int main(int ac, char *av[])
 {
    // filenames, etc, hard coded at the top of the file
    // load input data
-//    char input_fname[]="../data/zebra-gray-raw-int8.dat";
-//   int data_dims[2] = {3556, 2573};
-//   char output_fname[] = "../data/processed-raw-int8-cpu.dat";
+   //    char input_fname[]="../data/zebra-gray-raw-int8.dat";
+   //   int data_dims[2] = {3556, 2573};
+   //   char output_fname[] = "../data/processed-raw-int8-cpu.dat";
 
-   off_t nvalues = data_dims[0]*data_dims[1];
-   unsigned char *in_data_bytes = (unsigned char *)malloc(sizeof(unsigned char)*nvalues);
+   off_t nvalues = data_dims[0] * data_dims[1];
+   unsigned char *in_data_bytes = (unsigned char *)malloc(sizeof(unsigned char) * nvalues);
 
-   FILE *f = fopen(input_fname,"r");
+   FILE *f = fopen(input_fname, "r");
    if (f == NULL)
    {
       printf(" Error opening the input file: %s \n", input_fname);
       return 1;
    }
-   if (fread((void *)in_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues*sizeof(unsigned char))
+   if (fread((void *)in_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues * sizeof(unsigned char))
    {
       printf("Error reading input file. \n");
       fclose(f);
@@ -130,12 +163,12 @@ main (int ac, char *av[])
 #define ONE_OVER_255 0.003921568627451
 
    // now convert from byte, in range 0..255, to float, in range 0..1
-   float *in_data_floats = (float *)malloc(sizeof(float)*nvalues);
-   for (off_t i=0; i<nvalues; i++)
+   float *in_data_floats = (float *)malloc(sizeof(float) * nvalues);
+   for (off_t i = 0; i < nvalues; i++)
       in_data_floats[i] = (float)in_data_bytes[i] * ONE_OVER_255;
 
    // now, create a buffer for output
-   float *out_data_floats = (float *)malloc(sizeof(float)*nvalues);
+   float *out_data_floats = (float *)malloc(sizeof(float) * nvalues);
 
    // do the processing =======================
    std::chrono::time_point<std::chrono::high_resolution_clock> start_time = std::chrono::high_resolution_clock::now();
@@ -148,13 +181,13 @@ main (int ac, char *av[])
    std::cout << " Elapsed time is : " << elapsed.count() << " " << std::endl;
 
    // write output after converting from floats in range 0..1 to bytes in range 0..255
-   unsigned char *out_data_bytes = in_data_bytes;  // just reuse the buffer from before
-   for (off_t i=0; i<nvalues; i++)
+   unsigned char *out_data_bytes = in_data_bytes; // just reuse the buffer from before
+   for (off_t i = 0; i < nvalues; i++)
       out_data_bytes[i] = (unsigned char)(out_data_floats[i] * 255.0);
 
-   f = fopen(output_fname,"w");
+   f = fopen(output_fname, "w");
 
-   if (fwrite((void *)out_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues*sizeof(unsigned char))
+   if (fwrite((void *)out_data_bytes, sizeof(unsigned char), nvalues, f) != nvalues * sizeof(unsigned char))
    {
       printf("Error writing output file. \n");
       fclose(f);
