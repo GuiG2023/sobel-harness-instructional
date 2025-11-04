@@ -1,117 +1,115 @@
-# sobel-harness-instructional
+# CSC 746 F25 CP5 - Sobel Filter Implementations
 
-This directory contains the code harnesses for doing three different implementation of a Sobel edge detection
-filter. The three implementations are:
+This submission is for Coding Project #5. It includes three implementations of a Sobel edge detection filter:
 
-* CPU only in C++, with your added OpenMP parallelism
-* GPU in CUDA
-* GPU in C++ with OpenMP Device Offload for running a kernel on the GPU
+* **`sobel_cpu`**: CPU-only C++ with OpenMP parallelism.
+* **`sobel_gpu`**: GPU implementation using CUDA.
+* **`sobel_cpu_omp_offload`**: GPU implementation using C++ with OpenMP Device Offload.
 
-# Build instructions - general
+All implementations read from the hard-coded data file `data/zebra-gray-int8-4x.dat` (7112x5146) and write their output to separate files in the `data/` directory.
 
-This assignment requires use of the Nvidia compilers as follows:
+# Build Instructions
 
+These instructions must be run on Perlmutter.
+
+1.  Set up the required environment:
+
+    ```bash
     module load PrgEnv-nvidia
     export CC=cc
-    export CXX=CC 
+    export CXX=CC
+    ```
 
-Then, once your environment is set up, then:
+2.  From the project's root directory, create a build directory and use CMake/make:
 
-    mkdir build  
-    cd build  
-    cmake ../  -Wno-dev
+    ```bash
+    mkdir build
+    cd build
+    cmake ../ -Wno-dev
     make
+    ```
 
-It is OK to do builds on the login node once you have set up the environment above.  
-All code should be executed on a GPU node.
+This will create three executables in the `build/` directory: `sobel_cpu`, `sobel_gpu`, and `sobel_cpu_omp_offload`.
 
-# Comments about all the codes
+# Execution Instructions
 
-In all three cases -- CPU only, GPU, and OpenMP device offload -- the programs will all read raw bytes
-of an image from a hard-coded location and of a hard-coded sizes. You are free to modify the source
-of data and image size if you like.
+All execution should be done on a Perlmutter GPU node (e.g., via an interactive `salloc` session or a batch script).
 
-The image provided with the distribution, located in the data subdirectory, is of a sufficient size , 7112x5146, to
-cause the CPU and GPU to do a non-trivial amount of work. More information about these data are located below.
+### 1. Part 1: CPU (OpenMP Parallel)
 
-# Adding your code to sobel_cpu.cpp
+This program (`sobel_cpu`) uses the `OMP_NUM_THREADS` environment variable to control concurrency, as required by the assignment.
 
-Start here because you want the algorithm to work properly first on a CPU and in serial.
+**To run with N threads:**
 
-You will need to add code inside two routines:
+```bash
+# Example for 8 threads
+export OMP_NUM_THREADS=8
+./build/sobel_cpu
+The performance test requires running with OMP_NUM_THREADS set to 1, 2, 4, 8, and 16. The output file is data/processed-raw-int8-4x-cpu.dat.
 
-* do_sobel_filtering() is where you will iterate over all input (i,j) pixels and then invoke the sobel_filtered_pixel() function, and then assign the computed value to the (i,j) location in the output.
-* sobel_filtered_pixel(), is where you will perform the Sobel stencil computation, convolving the 3x3 x- and y- filter weights with the 3x3 pixel window surrounding the (i,j) location in the input
+2. Part 2: GPU (CUDA)
+This program (sobel_gpu) takes the number of thread blocks and threads per block as command-line arguments.
 
-For OpenMP parallelism in this code, focus your attention on the do_sobel_filtering() function, and
-implement loop parallelism over the one or two for loops that iterate over the input image.
+Usage: ./build/sobel_gpu <numBlocks> <numThreadsPerBlock>
 
-# Testing and verifying your computations
+Example (for 64 blocks and 256 threads):
 
-For all programs, when you run the code, it reads from a hard-coded data file, and writes to a hard-coded output file, also located in the data subdirectory. Each of the 3 different codes writes to a different named file, e.g., processed-raw-int8-4x-cpu.dat, processed-raw-int8-4x-gpu.dat, etc.
+Bash
 
-You can verify your result by displaying the image with the python script provided. For example, from the sobel-harness-instructional directory,
+./build/sobel_gpu 64 256
+The output file is data/processed-raw-int8-4x-gpu.dat.
 
-    module load python
-    python scripts/imshow.py data/zebra-gray-int8-4 7112 5146  # display the source image
-    python scripts/imshow.py data/processed-raw-int8-4x-gpu.dat 7112 5146  # display result from your code
+3. Part 3: GPU (OpenMP Offload)
+This program (sobel_cpu_omp_offload) does not require any special runtime arguments.
 
-This will display the results of the "correct results" of the sobel filter applied to the default input dataset, zebra-gray-int8-4x. 
+To run:
 
-Note: if you're running this script from Perlmutter, please be sure that you:
-* ssh -Y user@perlmutter-p1.nersc.gov when you connect so that X connections are tunneled through ssh, and the image will actually display remotely, and
-* Once on Perlmutter, do a module load python    otherwise you will be accessing an outdated version of python.
+Bash
 
-# Adding your code to the sobel_gpu.cu
+./build/sobel_cpu_omp_offload
+The output file is data/processed-raw-int8-4x-cpu.dat.
 
-Next, head over to sobel_gpu.cu to work on the CUDA implementation of your sobel filter.
+Performance Data Collection (NCU)
+The following commands are used to gather the GPU performance metrics as specified in the assignment.
 
-Here, you will need to add code to sobel_filtered_pixel() and sobel_kernel_gpu(). The sobel_filtered_pixel() code on the GPU might be nearly identical to your CPU code.
+Note: If ncu fails with a "driver resource was unavailable" error, run dcgmi profile --pause and try the ncu command again.
 
-For the sobel_kernel_gpu() function, you will need to think like a CUDA coder and look at CUDA variables --  blockIdx, blockDim, threadIdx, blockDim and gridDim --  to compute the index/stride to use in striding through the source 
-array, calling the sobel_filtered_pixel() function at each location to do the work.
+1. GPU (CUDA)
+This command collects all three required metrics (runtime, bandwidth, and occupancy) in one run.
 
-You will probably use a processing motif here very similar to what we did in Lab#1, vector addition in CUDA.
+Bash
 
-# Adding code to the sobel_cpu_omp_offload.cpp
+# Example for 64 blocks, 256 threads
+ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_gpu 64 256
+(Note: sm__warps_active.avg.pct_of_peak_sustained_active corresponds to the required "Achieved Occupancy %".)
 
-Here, you will need to add your code to the sobel_filtered_pixel() and do_sobel_filtering() functions.
+2. GPU (OpenMP Offload)
+This command collects the metrics for the single-run OpenMP offload version.
 
-Your sobel_filtered_pixel() code is likely identical to that for your sobel_cpu.cpp implementation.
+Bash
 
-Inside the do_sobel_filtering() function, you will need to add the code that iterates over every (i,j)
-location of input and calls the sobel_filtered_pixel() method.
+ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_cpu_omp_offload
+Testing and Verifying Computations
+You can verify the output images using the provided Python script.
 
-You will also need to add the following line of code:
+Prerequisites:
 
- #pragma omp target teams parallel for  
+Log in to Perlmutter with X-tunneling enabled: ssh -Y user@perlmutter.nersc.gov
 
-around those loops to iterate over very (i,j) location of input. You may also wish to consider additional clauses that might be appropriate here to increase parallelism if you are using nested loops.
+Load the Python module: module load python
 
-You will also need to add one more item to the line reading #pragma omp target data (...). As written, that line of code maps the input data and parameters to the device, but it does not have a map() statement to pull the data back from the device. You need to add that one more item to this line in order to have the results come back from the GPU. 
+Example (from the project's root directory):
 
-For additional reading, have a look at this collection of slides/material from a 2024 NERSC OpenMP training session, which does include information about OpenMP device offload on NERSC platforms: https://github.com/NERSC/openmp-series-2024
+Bash
 
+# Display the source image
+python scripts/imshow.py data/zebra-gray-int8-4x.dat 7112 5146
 
-# Information about data files
+# Display the result from the CUDA code
+python scripts/imshow.py data/processed-raw-int8-4x-gpu.dat 7112 5146
 
-Zebra file dimensions 
-* Original: 3556 2573
-* 4x Augmented: 7112 5146
+# Display the result from the CPU OpenMP code
+python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
 
-* zebra-gray-int8.dat - raw 8-bit grayscale pixel values from the Zebra_July_2008-1.jpg image
-* zebra-gray-int8-4x.dat - raw 8-bit grayscale pixel values from the Zebra_July_2008-1.jpg image but 
-augmented 2x in each direction
-
-Source file:  Zebra_July_2008-1.jpg, obtained from Wikimedia commons, https://commons.wikimedia.org/wiki/File:Zebra_July_2008-1.jpg
-
-# python display script
-
-imshow.py - a python script to display the raw 8-bit pixel values in grayscale. 
-
-Usage:  
-
-    python imshow.py filename-of-raw-8bit-bytes int-cols-width int-rows-height
-
-
-# eof
+# Display the result from the OpenMP Offload code
+python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146

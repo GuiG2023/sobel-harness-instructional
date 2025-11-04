@@ -100,6 +100,7 @@ void do_sobel_filtering(float *in, float *out, int ncols, int nrows)
    {
       for (int j = 0; j < ncols; j++)
       {
+
          out[i * ncols + j] = sobel_filtered_pixel(in, i, j, ncols, nrows, Gx, Gy);
       }
    }
