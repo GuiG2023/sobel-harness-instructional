@@ -113,3 +113,36 @@ python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
 
 # Display the result from the OpenMP Offload code
 python scripts/imshow.py data/processed-raw-int8-4x-cpu.dat 7112 5146
+
+
+README: GPU Node Usage Policy
+WARNING: GPU node allocations are extremely limited and expensive. Follow these rules to avoid wasting resources.
+
+Rule 1: Compiling / Viewing -> Use CPU Nodes
+All non-compute tasks (like make, python imshow.py, editing files, etc.) must be done on a CPU node.
+
+Bash
+
+# Request a CPU node (for make, python, etc.)
+salloc -N 1 -C cpu -t 10:00 -q interactive -A m3930
+...
+# !! When finished !!
+exit
+Rule 2: Running Code -> Use GPU Nodes
+Only request a GPU node when you are actively running your CUDA (./sobel_gpu) or OpenMP Offload (./sobel_cpu_omp_offload) programs.
+
+Bash
+
+# Request a GPU node (for ./sobel_... )
+salloc -N 1 -C gpu -G 1 -t 10:00 -q interactive -A m3930
+...
+# !! When finished !!
+exit
+Rule 3: No "Zombie" Jobs
+salloc sessions do not automatically stop if you disconnect or close your terminal. They will keep running and charging your allocation until the time limit is reached.
+
+Always exit: You must manually type exit in the salloc shell when you are done.
+
+Check: Run squeue -u $USER on the login node to check for leftover jobs in the R (Running) state.
+
+Clean Up: If you find any "zombie" jobs, kill them immediately with scancel [JOBID]
