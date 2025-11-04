@@ -45,8 +45,6 @@ char output_fname[] = "../data/processed-raw-int8-4x-cpu.dat";
 float sobel_filtered_pixel(float *s, int i, int j, int ncols, int nrows, float *gx, float *gy)
 {
 
-   float t = 0.0;
-
    float Gx = 0.0, Gy = 0.0;
 
    // 3x3
