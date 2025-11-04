@@ -77,7 +77,6 @@ Note: If ncu fails with a "driver resource was unavailable" error, run dcgmi pro
 1. GPU (CUDA)
 This command collects all three required metrics (runtime, bandwidth, and occupancy) in one run.
 
-```bash
 
 # Example for 64 blocks, 256 threads
 ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_gpu 64 256
@@ -86,7 +85,6 @@ ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_pea
 2. GPU (OpenMP Offload)
 This command collects the metrics for the single-run OpenMP offload version.
 
-```bash
 
 ncu --set basic --metrics gpu__time_duration.avg,dram__throughput.avg.pct_of_peak_sustained_elapsed,sm__warps_active.avg.pct_of_peak_sustained_active ./build/sobel_cpu_omp_offload
 Testing and Verifying Computations
@@ -121,7 +119,6 @@ WARNING: GPU node allocations are extremely limited and expensive. Follow these 
 Rule 1: Compiling / Viewing -> Use CPU Nodes
 All non-compute tasks (like make, python imshow.py, editing files, etc.) must be done on a CPU node.
 
-```bash
 
 # Request a CPU node (for make, python, etc.)
 salloc -N 1 -C cpu -t 10:00 -q interactive -A m3930
@@ -131,7 +128,6 @@ exit
 Rule 2: Running Code -> Use GPU Nodes
 Only request a GPU node when you are actively running your CUDA (./sobel_gpu) or OpenMP Offload (./sobel_cpu_omp_offload) programs.
 
-```bash
 
 # Request a GPU node (for ./sobel_... )
 salloc -N 1 -C gpu -G 1 -t 10:00 -q interactive -A m3930
